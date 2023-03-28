@@ -1,0 +1,216 @@
+from __future__ import division, print_function
+# coding=utf-8
+import sys
+import os
+import glob
+import re
+import numpy as np
+import pickle
+import numpy as np # linear algebra
+import pandas as pd
+from IPython.display import Image
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.cluster import KMeans
+import cv2
+from flask import make_response
+# Flask utils
+from flask import Flask, redirect, url_for, request, render_template
+from werkzeug.utils import secure_filename
+import sqlite3
+#from flask_caching import Cache
+
+app = Flask(__name__)
+#app.config["CACHE_TYPE"] = "null"
+
+#cache = Cache(app,config={'CACHE_TYPE': 'simple'})
+
+#ache.init_app(app)
+
+UPLOAD_FOLDER = 'static/uploads/'
+
+static_path = 'static'
+
+# allow files of a specific type
+ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
+
+# function to check the file extension
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+model_path2 = pickle.load(open('model.pkl','rb'))
+
+def auto_canny(image, sigma=0.33):
+  # compute the median of the single channel pixel intensities
+  v = np.median(image)
+  # apply automatic Canny edge detection using the computed median
+  lower = int(max(0, (1.0 - sigma) * v))
+  upper = int(min(255, (1.0 + sigma) * v))
+  edged = cv2.Canny(image, lower, upper)
+  # return the edged image
+  return edged
+
+CTS = model_path2
+    
+@app.route("/")
+#@cache.cached(timeout=50)
+def home():
+    return render_template("home.html")
+
+@app.route('/logon')
+#@cache.cached(timeout=50)
+def logon():
+    return render_template('signup.html')
+
+@app.route('/login')
+#@cache.cached(timeout=50)
+def login():
+    return render_template('signin.html')
+
+@app.route("/signup")
+##@cache.cached(timeout=50)
+def signup():
+
+    username = request.args.get('user','')
+    name = request.args.get('name','')
+    email = request.args.get('email','')
+    number = request.args.get('mobile','')
+    password = request.args.get('password','')
+    con = sqlite3.connect('signup.db')
+    cur = con.cursor()
+    cur.execute("insert into `info` (`user`,`email`, `password`,`mobile`,`name`) VALUES (?, ?, ?, ?, ?)",(username,email,password,number,name))
+    con.commit()
+    con.close()
+    return render_template("signin.html")
+
+@app.route("/signin")
+#@cache.cached(timeout=50)
+def signin():
+
+    mail1 = request.args.get('user','')
+    password1 = request.args.get('password','')
+    con = sqlite3.connect('signup.db')
+    cur = con.cursor()
+    cur.execute("select `user`, `password` from info where `user` = ? AND `password` = ?",(mail1,password1,))
+    data = cur.fetchone()
+
+    if data == None:
+        return render_template("signin.html")    
+
+    elif mail1 == 'admin' and password1 == 'admin':
+        return render_template("index.html")
+
+    elif mail1 == str(data[0]) and password1 == str(data[1]):
+        return render_template("home.html")
+    else:
+        return render_template("index.html")
+
+@app.route('/index')
+#@cache.cached(timeout=50)
+def index():
+    return render_template('index.html')
+
+@app.route('/predict2',methods=['GET','POST'])
+def predict2():
+    #pred = []
+    print("Entered")
+    
+    print("Entered here")
+    file = request.files['files'] # fet input
+    filename = file.filename        
+    print("@@ Input posted = ", filename)
+        
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(file_path)
+
+    image = cv2.imread(file_path)
+    image = cv2.resize(image , (32,32))
+    
+    image = image.reshape([-1, np.product((32,32,3))])
+    result = CTS.predict(image)
+    
+    
+    if result == 2:
+        pred = "The Patient is Normal Stage, Based on input Image!"
+        return render_template('result1.html', pred_output = pred, img_src=UPLOAD_FOLDER + file.filename)
+             
+    elif result == 1:
+        pred = "The Patient is Diagnosis with Malignant Stage, Based on input Image!"
+        image = cv2.imread(file_path)
+        print("width: {} pixels".format(image.shape[1]))
+        print("height: {} pixels".format(image.shape[0]))
+        print("channels: {}".format(image.shape[2]))
+        dim=(500,590)
+        image=cv2.resize(image, dim)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY, 0.7)
+        #cv2_imshow(gray)
+        (T, thresh) = cv2.threshold(gray, 155, 255, cv2.THRESH_BINARY)
+        cv2.imwrite('static/thresh.png',thresh)
+        (T, threshInv) = cv2.threshold(gray, 155, 255, cv2.THRESH_BINARY_INV)
+        cv2.imwrite('static/thresinv.png',threshInv)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 5))
+        closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        cv2.imwrite('static/morpho.png',closed)
+        closed = cv2.erode(closed, None, iterations = 14)
+        closed = cv2.dilate(closed, None, iterations = 13)
+        cv2.imwrite('static/dilate.png',closed)
+        ret,mask = cv2.threshold(closed, 155, 255, cv2.THRESH_BINARY) 
+        #apply AND operation on image and mask generated by thrresholding
+        final = cv2.bitwise_and(image,image,mask = mask) 
+        #plot the result
+        cv2.imwrite('static/bitwise.png',final)
+        canny = auto_canny(closed)
+        (cnts, _) = cv2.findContours(canny.copy(), cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(image, cnts, -1, (0, 0, 255), 2)
+        cv2.imwrite('static/final.png',image) 
+
+        return render_template('result.html', pred_output = pred, img_src=UPLOAD_FOLDER + file.filename)
+    
+    elif result == 0:
+        pred = "The Patient is Diagnosis with Bengin Stage, Based on input Image!"
+        image = cv2.imread(file_path)
+        print("width: {} pixels".format(image.shape[1]))
+        print("height: {} pixels".format(image.shape[0]))
+        print("channels: {}".format(image.shape[2]))
+        dim=(500,590)
+        image=cv2.resize(image, dim)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY, 0.7)
+        #cv2_imshow(gray)
+        (T, thresh) = cv2.threshold(gray, 155, 255, cv2.THRESH_BINARY)
+        cv2.imwrite('static/thresh.png',thresh)
+        (T, threshInv) = cv2.threshold(gray, 155, 255, cv2.THRESH_BINARY_INV)
+        cv2.imwrite('static/thresinv.png',threshInv)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 5))
+        closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        cv2.imwrite('static/morpho.png',closed)
+        closed = cv2.erode(closed, None, iterations = 14)
+        closed = cv2.dilate(closed, None, iterations = 13)
+        cv2.imwrite('static/dilate.png',closed)
+        ret,mask = cv2.threshold(closed, 155, 255, cv2.THRESH_BINARY) 
+        #apply AND operation on image and mask generated by thrresholding
+        final = cv2.bitwise_and(image,image,mask = mask) 
+        #plot the result
+        cv2.imwrite('static/bitwise.png',final)
+        canny = auto_canny(closed)
+        (cnts, _) = cv2.findContours(canny.copy(), cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(image, cnts, -1, (0, 0, 255), 2)
+        cv2.imwrite('static/final.png',image) 
+
+        return render_template('result.html', pred_output = pred, img_src=UPLOAD_FOLDER + file.filename)
+
+@app.route('/notebook')
+#@cache.cached(timeout=50)
+def notebook():
+    return render_template('Notebook.html')
+
+@app.route('/graph')
+#@cache.cached(timeout=50)
+def about():
+    return render_template('graph.html')
+   
+if __name__ == '__main__':
+    app.run(debug=False)
