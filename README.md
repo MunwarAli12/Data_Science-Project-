@@ -1,7 +1,5 @@
-# kaiburr_task6_19BEC0743
-Task 6: Data Science example.
-Implement a sample machine learning program for a problem statement of your choice,
-here we used a real time based health care module project i.e lung cancer detection and classififcation using ml .
+Realtime_based_build web applicattion,
+here we used a real time based health care module project i.e lung cancer detection and classififcation using machine learning and deep learning algorithms .
 Problem Statement:
 Lung cancer is the leading cause of cancer-related deaths globally, and early detection is essential for better patient outcomes.Traditional techniques for detecting lung cancer, such as CT scans, are, on the other hand, time-consuming and costly.Deep learning and machine learning algorithms have shown potential in terms of increasing the accuracy and speed of lung cancer detection.As a result, the problem statement is to create a machine learning or deep learning model that can identify lung cancer from medical images such as CT scans or X-rays in order to aid in early diagnosis and treatment.To evaluate its efficiency, the model should be trained on a big dataset of medical images and validated on an independent test set. Lung cancer detection and classification using deep learning and machine learning algorithms is an important area of research. There are different approaches that can be used to perform this task, but the most common ones are using convolutional neural networks (CNNs) and support vector machines (SVMs), decision trees and random forests.
 the platform used is jupyter notebook and the output images are in the folder kaiburr_task6_19BEC0743/UI/results.
